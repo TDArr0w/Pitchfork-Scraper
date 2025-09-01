@@ -4,7 +4,8 @@ import os
 import smtplib
 from email.message import EmailMessage
 from email.utils import formataddr
-from pathlib import Path
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -13,7 +14,6 @@ sender_email = os.getenv("email")
 receiver_email = os.getenv("email")
 password = os.getenv("password")
 
-#receiver_email="clara.r.s.rose@gmail.com"
 
 URL = "https://pitchfork.com/best/"
 
@@ -90,23 +90,85 @@ fake_album_info = {
 
 
 def send_email( album_infoset, sender_email, receiver_email, password_info):
-    subject = f"New Album Alert: {album_infoset['title']}"
-    message = (f"Check out the new album by {album_infoset['artist']}:\n\n"
-            f"Title: {album_infoset['title']}\n"
-            f"Artist: {album_infoset['artist']}\n"
-            f"Cover URL: {album_infoset['cover_url']}\n"
-            f"Review URL: {album_infoset['review_url']}")
-            
+    subject = f"🎶 New Album Alert: {album_infoset['title']}"
 
-    text = f"Subject: {subject}\nFrom: Pitchfork Scraper <{sender_email}>\nTo: {receiver_email}\n\n{message}"
-    
+    # Create message container
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = formataddr(("Pitchfork Scraper", sender_email))
+    msg["To"] = receiver_email
 
-    text = f"subject: {subject}\n\n{message }"
+    # HTML version with image + styling
+    html = f"""
+<html>
+  <head>
+    <style>
+      body {{
+        font-family: Arial, sans-serif;
+        background-color: #D8D5DB;
+        margin: 0;
+        padding: 20px;
+      }}
+      .container {{
+        max-width: 500px;
+        margin: auto;
+        background: #D8D5DB;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        text-align: center;
+      }}
+      h2 {{
+        color: #2D3142;
+        margin-bottom: 10px;
+      }}
+      img {{
+        max-width: 100%;
+        border-radius: 12px;
+        margin: 15px 0;
+      }}
+      p {{
+        font-size: 16px;
+        color: #333333;
+        margin: 6px 0;
+      }}
+      .button {{
+        display: inline-block;
+        padding: 10px 18px;
+        margin-top: 15px;
+        background-color: #ADACB5;
+        color: #2D3142 !important;
+        text-decoration: none;
+        border-radius: 8px;
+        font-weight: bold;
+      }}
+      .button:hover {{
+        background-color: #1a242f;
+      }}
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h2>🎶 New Album Alert 🎶</h2>
+      <img src="{album_infoset['cover_url']}" alt="Album Cover">
+      <p><b>Artist:</b> {album_infoset['artist']}</p>
+      <p><b>Title:</b> {album_infoset['title']}</p>
+      <a class="button" href="{album_infoset['review_url']}">Read the Full Review</a>
+    </div>
+  </body>
+</html>
+"""
+
+
+    part = MIMEText(html, "html")
+    msg.attach(part)
+
     server = smtplib.SMTP("smtp.gmail.com", 587)
     server.starttls()
     server.login(sender_email, password_info)
-    server.sendmail(sender_email, receiver_email, text)
+    server.sendmail(sender_email, receiver_email, msg.as_string())
     print("successfully sent email")
+
 
 def main():
     album_info = get_best_album_info()
@@ -124,5 +186,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
