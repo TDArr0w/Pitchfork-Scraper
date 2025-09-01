@@ -13,6 +13,7 @@ sender_email = os.getenv("email")
 receiver_email = os.getenv("email")
 password = os.getenv("password")
 
+#receiver_email="clara.r.s.rose@gmail.com"
 
 URL = "https://pitchfork.com/best/"
 
