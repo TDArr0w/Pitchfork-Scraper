@@ -1,12 +1,23 @@
 import requests
 from bs4 import BeautifulSoup
 import os
+import smtplib
+from email.message import EmailMessage
+from email.utils import formataddr
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
+
+sender_email = os.getenv("email")
+receiver_email = os.getenv("email")
+password = os.getenv("password")
+
 
 URL = "https://pitchfork.com/best/"
 
 response = requests.get(URL)
 soup = BeautifulSoup(response.content, "html.parser")
-
 
 
 def get_best_album_info():
@@ -70,12 +81,31 @@ def save_album(latest_title):
         f.write(latest_title + "\n")        # add a newline after each title
 
 fake_album_info = {
-    "title": "Echoes of Tomorrow",
+    "title": "Echoes of Tomorrow13",
     "artist": "The Soundscapers",
     "cover_url": "https://example.com/images/echoes-of-tomorrow.jpg",
     "review_url": "https://pitchfork.com/reviews/albums/the-soundscapers-echoes-of-tomorrow"
 } 
 
+
+def send_email( album_infoset, sender_email, receiver_email, password_info):
+    subject = f"New Album Alert: {album_infoset['title']}"
+    message = (f"Check out the new album by {album_infoset['artist']}:\n\n"
+            f"Title: {album_infoset['title']}\n"
+            f"Artist: {album_infoset['artist']}\n"
+            f"Cover URL: {album_infoset['cover_url']}\n"
+            f"Review URL: {album_infoset['review_url']}")
+            
+
+    text = f"Subject: {subject}\nFrom: Pitchfork Scraper <{sender_email}>\nTo: {receiver_email}\n\n{message}"
+    
+
+    text = f"subject: {subject}\n\n{message }"
+    server = smtplib.SMTP("smtp.gmail.com", 587)
+    server.starttls()
+    server.login(sender_email, password_info)
+    server.sendmail(sender_email, receiver_email, text)
+    print("successfully sent email")
 
 def main():
     album_info = get_best_album_info()
@@ -86,8 +116,12 @@ def main():
         if has_new_album(album_info["title"]):
             print("New album found! Saving...")
             save_album(album_info["title"])
+            send_email(album_info, sender_email, receiver_email, password)        
         else:
             print("No new album.")
 
+
 if __name__ == "__main__":
     main()
+
+
