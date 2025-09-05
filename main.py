@@ -7,6 +7,12 @@ from email.utils import formataddr
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
+from PIL import Image
+import numpy as np
+from io import BytesIO
+import colorGenerator as cG
 
 load_dotenv()
 
@@ -14,12 +20,20 @@ sender_email = os.getenv("email")
 receiver_email = os.getenv("email")
 password = os.getenv("password")
 
+spot_id = os.getenv("client_id")
+spot_secret = os.getenv("client_secret")
+
 
 URL = "https://pitchfork.com/best/"
 
 response = requests.get(URL)
 soup = BeautifulSoup(response.content, "html.parser")
 
+# 1. Authenticate
+sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+    client_id=spot_id,
+    client_secret=spot_secret
+))
 
 def get_best_album_info():
     #container = soup.select_one("div", class_="SubtopicDiscoveryItemContainer-kdbIDR fhvuqf")
@@ -59,7 +73,8 @@ def get_best_album_info():
             "title": title,
             "artist": artist,
             "cover_url": cover_url,
-            "review_url": " https://pitchfork.com" + review_url
+            "review_url": " https://pitchfork.com" + review_url,
+            "spotify_url": find_album(title)
         }
         return(best_album_info)
     else:
@@ -81,12 +96,73 @@ def save_album(latest_title):
     with open("last_album.txt", "a") as f:  # "a" mode appends to the file
         f.write(latest_title + "\n")        # add a newline after each title
 
+
+
+def find_album(album_name):
+    # 2. Search Spotify
+    results = sp.search(q=f"album:{album_name}", type="album", limit=1)
+
+    # 3. Check if any album found
+    albums = results.get("albums", {}).get("items", [])
+    if not albums:
+        return None  # Album not found
+
+    # 4. Return the Spotify link
+    album = albums[0]
+    return album["external_urls"]["spotify"]
+
+
 fake_album_info = {
     "title": "Echoes of Tomorrow13",
     "artist": "The Soundscapers",
     "cover_url": "https://example.com/images/echoes-of-tomorrow.jpg",
     "review_url": "https://pitchfork.com/reviews/albums/the-soundscapers-echoes-of-tomorrow"
 } 
+
+def get_average_color(image_url):
+    response = requests.get(image_url)
+    img = Image.open(BytesIO(response.content)).convert('RGB')
+    np_img = np.array(img)
+
+    # Flatten the image array and compute mean across RGB channels
+    avg_color = np_img.mean(axis=(0, 1))
+    r, g, b = map(int, avg_color)
+    return (r, g, b)
+
+
+
+def load_email_template(context, background_color):
+    html_path = os.path.join("templates", "email.html")
+    css_path = os.path.join("templates", "email.css")
+
+    with open(html_path, "r", encoding="utf-8") as f:
+      html = f.read()
+
+    # First substitute variables into HTML
+    html = html.format(**context)
+
+    # Then inject raw CSS (no formatting here)
+    with open(css_path, "r", encoding="utf-8") as f:
+        css = f.read()
+
+    background_color = cG.Color(rgb=background_color)
+    comp_background = background_color.complementary()
+
+    back_color = str(background_color)[2:]
+    comp_back_color = str(comp_background)[2:]
+    print(f"back color: {back_color}")
+    print(f"comp back color: {comp_back_color}")
+
+    # Replace placeholders in CSS
+    css = css.replace("{background_color}", back_color)
+    css = css.replace("{comp_background}", comp_back_color)
+
+    html = html.replace(
+        '<link rel="stylesheet" href="email.css">',
+        f"<style>{css}</style>"
+    )
+    # Format with context values
+    return html
 
 
 def send_email( album_infoset, sender_email, receiver_email, password_info):
@@ -98,67 +174,9 @@ def send_email( album_infoset, sender_email, receiver_email, password_info):
     msg["From"] = formataddr(("Pitchfork Scraper", sender_email))
     msg["To"] = receiver_email
 
-    # HTML version with image + styling
-    html = f"""
-<html>
-  <head>
-    <style>
-      body {{
-        font-family: Arial, sans-serif;
-        background-color: #D8D5DB;
-        margin: 0;
-        padding: 20px;
-      }}
-      .container {{
-        max-width: 500px;
-        margin: auto;
-        background: #D8D5DB;
-        padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        text-align: center;
-      }}
-      h2 {{
-        color: #2D3142;
-        margin-bottom: 10px;
-      }}
-      img {{
-        max-width: 100%;
-        border-radius: 12px;
-        margin: 15px 0;
-      }}
-      p {{
-        font-size: 16px;
-        color: #333333;
-        margin: 6px 0;
-      }}
-      .button {{
-        display: inline-block;
-        padding: 10px 18px;
-        margin-top: 15px;
-        background-color: #ADACB5;
-        color: #2D3142 !important;
-        text-decoration: none;
-        border-radius: 8px;
-        font-weight: bold;
-      }}
-      .button:hover {{
-        background-color: #1a242f;
-      }}
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h2>🎶 New Album Alert 🎶</h2>
-      <img src="{album_infoset['cover_url']}" alt="Album Cover">
-      <p><b>Artist:</b> {album_infoset['artist']}</p>
-      <p><b>Title:</b> {album_infoset['title']}</p>
-      <a class="button" href="{album_infoset['review_url']}">Read the Full Review</a>
-    </div>
-  </body>
-</html>
-"""
-
+    background_color = get_average_color(album_infoset["cover_url"])
+    # Path to your HTML template
+    html = load_email_template(album_infoset, background_color)
 
     part = MIMEText(html, "html")
     msg.attach(part)
